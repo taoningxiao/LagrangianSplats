@@ -124,7 +124,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
     # time3 = get_time()
-    rendered_image, radii, depth = rasterizer(
+    raster_outputs = rasterizer(
         means3D = means3D_final,
         means2D = means2D,
         shs = shs_final,
@@ -133,6 +133,11 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         scales = scales_final,
         rotations = rotations_final,
         cov3D_precomp = cov3D_precomp)
+    if len(raster_outputs) == 2:
+        rendered_image, radii = raster_outputs
+        depth = torch.zeros_like(rendered_image[:1])
+    else:
+        rendered_image, radii, depth = raster_outputs
     # time4 = get_time()
     # print("rasterization:",time4-time3)
     # breakpoint()
@@ -143,4 +148,3 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             "visibility_filter" : radii > 0,
             "radii": radii,
             "depth":depth}
-

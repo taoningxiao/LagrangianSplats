@@ -1,5 +1,6 @@
 import os
 import json
+import gc
 import torch
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
@@ -32,6 +33,18 @@ from velocity_training.models import InflowGaussians
 from velocity_training.wrappers import ExtendedGaussianWrapper, GaussianOverrideWrapper
 from velocity_training.utils import precompute_camera_masks, pretrain_inflow_gaussians, visualize_inflow_region_all_cameras
 from velocity_common.ray_utils import get_rays_from_camera, ray_inflow_region_intersection
+
+
+def _release_unused_memory():
+	"""Return freed tensors/arrays to the system between long sliding windows."""
+	gc.collect()
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+	try:
+		import ctypes
+		ctypes.CDLL("libc.so.6").malloc_trim(0)
+	except Exception:
+		pass
 
 
 # Visualization helper functions
@@ -2097,13 +2110,12 @@ def train_velocity_model_with_gaussian(args, savedir=None, scale: int = 1, gauss
 						end_idx = start_idx + inflow_points_per_group
 						grad_render_world_group = grad_render_world_all_inflow[start_idx:end_idx]
 						
-						# Convert inflow points gradient from world space back to sim space
-						with torch.enable_grad():
-							dummy_sim = inflow_gaussians._xyz_groups[group_idx].detach().requires_grad_(True)
-							dummy_smoke = dummy_sim / lengths_tensor
-							dummy_world = coord_trans.smoke2world(dummy_smoke)
-							dummy_world.backward(grad_render_world_group)
-							grad_sim_inflow = dummy_sim.grad.detach()
+						# Convert inflow gradients analytically for:
+						# world = (sim / lengths * scale) @ R_s2w.T + T_s2w
+						grad_sim_inflow = (
+							torch.matmul(grad_render_world_group, coord_trans.R_s2w)
+							* (coord_trans.scale / lengths_tensor)
+						).detach()
 						
 						# Accumulate gradient to inflow parameter (for optimizing inflow point positions)
 						# Now we allow gradients for newly_added_group_idx as well
@@ -3700,6 +3712,7 @@ def train_velocity_model_sliding_window(args, savedir=None, scale: int = 1, gaus
 		for key in list(frame_gaussian_states.keys()):
 			if key not in keep_gaussian_keys:
 				del frame_gaussian_states[key]
+		_release_unused_memory()
 		if next_window_exists:
 			print(f"  [Memory] Kept velocity models for frames {sorted(keep_vel_keys)}, GS state for frame {start_frame}; cleared the rest.")
 		else:

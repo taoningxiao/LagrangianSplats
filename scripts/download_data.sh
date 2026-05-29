@@ -12,7 +12,7 @@ fi
 
 download_one() {
   local scene="$1"
-  mkdir -p data/smoke gt checkpoints
+  mkdir -p data/smoke gt
 
   curl -L "${BASE_URL}/data/${scene}.tar.gz" -o "/tmp/${scene}_data.tar.gz"
   tar -xzf "/tmp/${scene}_data.tar.gz" -C data/smoke
@@ -21,12 +21,6 @@ download_one() {
     tar -xzf "/tmp/${scene}_gt.tar.gz" -C gt
   else
     echo "No GT archive found for ${scene}; continuing without GT."
-  fi
-
-  if curl --fail -L "${BASE_URL}/checkpoints/${scene}.tar.gz" -o "/tmp/${scene}_ckpt.tar.gz"; then
-    tar -xzf "/tmp/${scene}_ckpt.tar.gz" -C checkpoints
-  else
-    echo "No checkpoint archive found for ${scene}; training will start from scratch."
   fi
 }
 
